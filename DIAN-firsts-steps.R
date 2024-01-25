@@ -277,6 +277,46 @@ png(filename = "./plots/pca_tissues_dose.png", width = 1000, height = 1000)
 pca_plot
 dev.off()
 
+######## A BETTER WAY TO DO THE PCAs, check this works well for you !! 
+### PCA plotting
+# matrix extraction 
+expression_matrix <- reshape2::dcast(dian_clean_imp, protein_group ~ sample_name, value.var = "normalized_intensity")
+rownames(expression_matrix) <- expression_matrix$protein_group 
+expression_matrix <- expression_matrix[,-1]
+pca1 <- prcomp(t(expression_matrix), center = T, scale. = T)
+pca1x <- as.data.frame(pca1$x)
+pca1x <- pca1x[colnames(expression_matrix),]
+
+# meta for pca
+pca_meta <- as.data.frame(tibble(
+  sample_rep = rownames(pca1x)
+))
+
+pca_meta$sample <- pca_meta$sample_rep
+for (i in 1:length(pca_meta$sample)){
+  pca_meta$sample[i] <- unlist(strsplit(pca_meta$sample_rep[i], "_")[[1]])[1]
+}
+rownames(pca_meta) <- pca_meta$sample_rep
+
+# data frame to plot
+pca1xx <- merge(pca1x, pca_meta, by = "row.names")
+
+# Represent the PCA
+pca_plot <- ggplot(pca1xx, 
+                   aes(x = PC1, y = PC2, label = sample_rep))+
+  geom_point(size = 4, aes(color = sample))+
+  guides(color = guide_legend(title = "Sample"))+
+  geom_text_repel(nudge_y = 0.01,
+                  size = 6)+
+  xlab(paste("PC1(", round(100*(pca1$sdev[1]^2/sum(pca1$sdev^2)), 2), "%)", sep = "")) +
+  ylab(paste("PC2(", round(100*(pca1$sdev[2]^2/sum(pca1$sdev^2)), 2), "%)", sep = "")) +
+  ggtitle(("Principal Component Analysis (PCA)"))+
+  geom_polygon(aes(group = sample, fill = sample), alpha = 0.2, show.legend = FALSE)
+pca_plot
+
+png(filename = "./plots/6_pca_replicates.png", width = 1400, height = 1400)
+pca_plot
+dev.off()
 
 
 
