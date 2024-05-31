@@ -302,7 +302,6 @@ png(filename = "./plots/5_intentity_per_sample_percentage.png", width = 1400, he
 int_of_prot_prot
 dev.off()
 
-
 # NA per protein
 naprot <- long_format %>%
   group_by(Protein.Group) %>%
@@ -420,6 +419,9 @@ dev.off()
 ### Remove samples
 long_format <- remove_samp(dataset = long_format, samples = c(""))
 dian_clean <- long_format
+
+### Sample Deconvolution
+############################ SOURCE AND MAKE THE FUNCTION WORK HERE !!
 
 ### Impute missing values
 colnames(dian_clean)[3] <- "protein_group"
