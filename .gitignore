@@ -4,6 +4,8 @@
 /raw_data/**
 /results
 /results/**
+/functions
+/functions/**
 ./Rhistory
 /**.html
 /TMT_PEAKS_Workflow_user.RMD
