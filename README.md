@@ -1,5 +1,5 @@
-# DIAN - data preprocessing
-DIAN is a powerful free software that enables the DIA raw files tables extractions. The code/s that present in this repository have been created with the single purpose of facilitate the preprocessing of this kind of data in order to optimize the time a bioinformatician takes to preprocess data and being able to deliver biological meaningful results. 
+# DIA - data preprocessing
+DIANN is a powerful free software that enables the DIA raw files tables extractions. The code/s that present in this repository have been created with the single purpose of facilitate the preprocessing of this kind of data in order to optimize the time a bioinformatician takes to preprocess data and being able to deliver biological meaningful results. 
 The preprocessing script does the folowing actions systematically:
 - Data importation.
 - Data transformations (log2 and median normalization)
