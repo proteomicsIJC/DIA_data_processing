@@ -22,15 +22,6 @@ library(openxlsx)
 library(ggrepel)
 library(readr) 
 
-### Directory preparation
-# Check if folders exist, if NO create them
-wd <- getwd()
-dir.create(file.path(wd,"./raw_data"))
-dir.create(file.path(wd,"./results"))
-dir.create(file.path(wd,"./plots"))
-file.remove(file.path(wd,"./results/used_parameters.txt"))
-file.create(file.path(wd, "./results/used_parameters.txt"))
-
 ### functions importation
 source("./functions/make_all_contrasts.R")
 source("./functions/upsidedown.R")
@@ -47,14 +38,14 @@ meta_data <- as.data.frame(readr::read_tsv("./results/meta_data.tsv"))
 
 #### data reshape
 ## expression matrix
-expression_mat <- expression_matrix[,c(c(2), ## Accession
+expression_mat <- expression_matrix[,c(c(1), ## Accession
                                        c(8:ncol(expression_matrix)))] ## samples
-row.names(expression_mat) <- expression_mat$Accession
+row.names(expression_mat) <- expression_mat$Protein.Group
 expression_mat <- expression_mat[,-1]
 expression_mat <- as.matrix(expression_mat)
 
 ## annotation
-rownames(annotation) <- annotation$Accession
+rownames(annotation) <- annotation$Protein.Group
 
 ## meta_data
 rownames(meta_data) <- meta_data$sample_name
@@ -66,7 +57,7 @@ table(colnames(expression_mat) == rownames(meta_data))
 ##################
 
 ## Desing matrix
-groups <- meta_data$cell_line
+groups <- meta_data$group
 design <- model.matrix(~0 + groups)
 colnames(design) <- gsub("^groups", "", colnames(design))
 colnames(design) <- gsub(" ","_", colnames(design))
@@ -88,12 +79,11 @@ tt <- topTable(fit = fit1, number = Inf)
 
 ## do the xlsx
 xlsx_work <- xlsx_tt(fit__1 = fit1, 
-                     meta_data = meta_data, meta_sample_column = "sample_name", meta_data_column = "cell_line", 
+                     meta_data = meta_data, meta_sample_column = "sample_name", meta_data_column = "group", 
                      annotation = annotation,
                      expression_matrix =  expression_mat,
                      differentation_element = " vs. ",
-                     color_samples = c("AG" = "darkorange",
-                                       "MET" = "skyblue",
-                                       "TC" = "darkgreen"),
-                     filename = "./results/limma_w_OMAR_001_removed.xlsx")
+                     color_samples = c("CHO" = "darkorange",
+                                       "UT" = "skyblue"),
+                     filename = "./results/limma_example.xlsx")
 

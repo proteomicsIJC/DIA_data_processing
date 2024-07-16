@@ -46,7 +46,7 @@ source("./functions/zero_to_na.R")
 source("./functions/zero_to_na_label_free.R")
 source("./functions/sample_combination.R")
 
-### data
+### DIAN data
 raw_data <- readr::read_tsv("./raw_data/report.pg_matrix.tsv", locale = readr::locale(encoding = "latin1"))
 raw_data <- as.data.frame(raw_data)
 colnames(raw_data)[1] <- "Protein.Group"
@@ -54,21 +54,28 @@ colnames(raw_data)[2] <- "Accession"
 colnames(raw_data)[3] <- "Protein Name"
 colnames(raw_data)[4] <- "Gene.names"
 colnames(raw_data)[5] <- "Protein Description"
-for (i in 6:(ncol(raw_data))){
-  ## gsub for the general pattern
-  colnames(raw_data)[i] <- gsub(pattern = "R:\\\\R_PROTEOMICA\\\\3_OE480_RAW_FILES\\\\VROD005\\\\Raw_file\\\\20240311_", replacement = "", x = colnames(raw_data)[i])
-  colnames(raw_data)[i] <- gsub(pattern = "\\\\20240426", replacement = "", x = colnames(raw_data)[i])
-  ## gsub remove .raw
-  colnames(raw_data)[i] <- gsub(pattern = "\\.raw",replacement = "", x = colnames(raw_data)[i])
-  ## gsub remove "coletillas"
-  colnames(raw_data)[i] <- gsub(pattern = "_B", replacement = "", x = colnames(raw_data)[i])
-  colnames(raw_data)[i] <- gsub(pattern = "_15ng", replacement = "", x = colnames(raw_data)[i])
-  ## Change PR for user name
-  colnames(raw_data)[i] <- gsub(pattern = "_FAVI019", replacement = "HNSCC", x = colnames(raw_data)[i])
-}
 
-### meta_data for sample_deconvolution
-meta_data_sample_combination <- as.data.frame(readr::read_tsv("./raw_data/meta_for_sample_combination.tsv"))
+### mutate colnames representing the samples
+## This will change at every DIAN run !!
+colnames(raw_data)[6:ncol(raw_data)] <- gsub("E.*REC_", "REC_", colnames(raw_data)[6:ncol(raw_data)])
+colnames(raw_data)[6:ncol(raw_data)] <- gsub("_DIA", "", colnames(raw_data)[6:ncol(raw_data)])
+colnames(raw_data)[6:ncol(raw_data)] <- gsub("\\.raw", "", colnames(raw_data)[6:ncol(raw_data)])
+raw_data <- raw_data[, -grep("Phospho", colnames(raw_data))]
+
+# rec_cho_2_16_11 <- apply(raw_data[, 6:7], 1, median, na.rm = TRUE)
+# rec_cho_9_11 <- apply(raw_data[, 8:9], 1, median, na.rm = TRUE)
+# rec_cho_16_11 <- apply(raw_data[, 10:11], 1, median, na.rm = TRUE)
+# rec_ut_9_11 <- apply(raw_data[, 14:15], 1, median, na.rm = TRUE)
+# rec_ut_16_11 <- apply(raw_data[, 16:17], 1, median, na.rm = TRUE)
+# rec_ut_2_16_11 <- apply(raw_data[, 12:13], 1, median, na.rm = TRUE)
+# 
+# raw_data <- cbind.data.frame(raw_data[, 1:5], 
+#                               "REC_CHO_9_11" = rec_cho_9_11,
+#                               "REC_CHO_16_11" = rec_cho_16_11,
+#                               "REC_CHO_2_16_11" = rec_cho_2_16_11,
+#                               "REC_UT_9_11" = rec_ut_9_11,
+#                               "REC_UT_16_11" = rec_ut_16_11,
+#                               "REC_UT_2_16_11" = rec_ut_2_16_11)
 
 ### Contaminants
 cont <- readLines("./raw_data/contaminants.fasta")
@@ -78,8 +85,10 @@ cont <- readLines("./raw_data/contaminants.fasta")
 ## Accession_1
 raw_data <- raw_data %>% 
   group_by(Accession) %>% 
-  mutate(Accession_1 = unlist(strsplit(x = Accession, split = "\\;"), use.names = F)[1]) %>% 
+  mutate(Accession_1 = unlist(strsplit(x = Accession, split = "\\;"), use.names = F)[1]) %>%
+  mutate(Gene.names_1 = unlist(strsplit(x = Gene.names, split = "\\;"), use.names = F)[1]) %>% 
   relocate(Accession_1, .after = Accession) %>% 
+  relocate(Gene.names_1, .after = Gene.names) %>% 
   ungroup()
 
 ## Uniprot.ws petition
@@ -94,15 +103,15 @@ raw_data <- as.data.frame(raw_data)
 dian_data <- raw_data
 
 ### Expression data
-dian <- raw_data[,7:ncol(raw_data)]
+dian <- raw_data[,8:ncol(raw_data)]
 rownames(dian) <- raw_data$Protein.Group
 
 # Meta data
 # This is an ungrouped version of the data that helps the imputation
-meta_data <- as.data.frame(tibble::tibble(
-  sample_name = colnames(dian),
-  exp_group = rep("Ungrouped", times = ncol(dian))
-))
+# meta_data <- as.data.frame(tibble::tibble(
+#   sample_name = colnames(dian),
+#   exp_group = rep("Ungrouped", times = ncol(dian))
+# ))
 
 #### Firsts transformations for the data manipulation
 # save the sample_names
@@ -133,21 +142,6 @@ long_format <- dian_clean %>%
   pivot_longer(cols = all_of(sample_names),
                names_to = "sample_name",
                values_to = "intens")
-## Add meta_data to long format
-long_format <- merge(long_format, meta_data, by = "sample_name")
-
-## Add median calculation (by sample)
-# add the meta_data for sample combination information
-long_format <- merge(long_format, meta_data_sample_combination, by = "sample_name")
-# this would be an example if we want to do the combination before extracting any quality metric
-long_format2 <- sample_combination(dataset = long_format, technical_replicates = "sample_name", 
-                                   expression_unit = "Protein.Group",
-                                   sample_names = "real_sample", 
-                                   intensity_to_combine = "intens",
-                                   report_results = F, remove_reps = T)
-
-colnames(long_format2)[grep("real_sample", colnames(long_format2))] <- "sample_name" 
-colnames(long_format2)[grep("combined_intensity", colnames(long_format2))] <- "intens"
 
 ## Boxplot for raw intensity
 intensity_boxplots <- ggplot(long_format, mapping = aes(x = sample_name, y = intens))+
@@ -175,7 +169,6 @@ completeness <- long_format %>%
   mutate(count_na = 100 - (((sum(is.na(intens))/to_completeness)))*100) %>% 
   subset(select = c(sample_name,count_na)) %>% 
   distinct()
-completeness <- merge(completeness, meta_data, by = "sample_name")
 
 # Plot
 completeness_barplot <- ggplot(completeness, mapping = aes(y = count_na, x = sample_name))+
@@ -204,7 +197,7 @@ nprot <- long_format %>%
   mutate(count_prot = sum(!is.na(intens))) %>% 
   subset(select = c(sample_name,count_prot)) %>% 
   distinct()
-nprot <- merge(nprot, meta_data, by = "sample_name")
+
 # Plot
 number_of_prot <- ggplot(nprot, mapping = aes(y = count_prot, x = sample_name))+
   geom_bar(stat = "identity", aes(fill = sample_name))+
@@ -232,7 +225,7 @@ int_prot <- long_format %>%
   mutate(int_prot = sum(2^intens ,na.rm = T)) %>% 
   subset(select = c(sample_name,int_prot)) %>% 
   distinct()
-int_prot <- merge(int_prot, meta_data, by = "sample_name")
+
 # Calculatio of top 10  most intens
 int_prot_topn <- long_format %>%
   mutate(intens = 2^intens)%>%
@@ -345,7 +338,7 @@ dev.off()
 ## n_prots and total intensity
 # Calculations and data modifications
 n_prots_total_int <- merge(nprot, int_prot, by = "sample_name")
-n_prots_total_int <- n_prots_total_int[,c(1,2,4)]
+# n_prots_total_int <- n_prots_total_int[,c(1,2,4)]
 
 lm_model <- lm(count_prot ~ int_prot, data = n_prots_total_int)
 r_squared <- summary(lm_model)$r.squared
@@ -373,77 +366,96 @@ dev.off()
 
 ## initial sample quantity and number of proteins
 # Add the info
-sample_extra_info <- as.data.frame(readr::read_tsv("./raw_data/sample_extra_info.tsv",
-                                                   locale = readr::locale(encoding = "latin1")))
-sample_extra_info <- sample_extra_info[,c(2,3,4)]
-colnames(sample_extra_info) <- c("sample_name","volume","injection_volume")
-n_prots_total_int <- merge(n_prots_total_int, sample_extra_info, by = "sample_name")
-# Calculations
-lm_model <- lm(count_prot ~ volume, data = n_prots_total_int)
-r_squared <- summary(lm_model)$r.squared
-# Plots
-prots_and_vol <- ggplot(data = n_prots_total_int, mapping = aes(x = volume, y = count_prot), label = sample_name)+
-  geom_point(size = 10, colour = "black")+
-  geom_smooth(method = "lm", formula = y ~ x)+
-  geom_text(x = 100, y = 300, label = paste0("Rsquared: ",as.character(round(r_squared, digits = 5))), color = "red", size= 8)+
-  theme_bw()+
-  geom_text_repel(nudge_y = 10,
-                  size = 6, mapping = aes(label = sample_name))+
-  ggtitle("Nº of proteins and Initial sample volume")+
-  xlab("Initial sample volume")+
-  ylab("Nº proteins")+
-  theme(legend.position= "none",
-        axis.text.x = element_text(angle = 0, vjust = 0.5, hjust = 1, size = 15, face = "bold"),
-        axis.text.y = element_text(size = 15, face = "bold"),
-        axis.title = element_text(size = 20),
-        title = element_text(size = 22),
-        legend.text = element_text(size = 14, face = "bold"))
-
-png(filename = "./plots/8_number_of_prots_and_volume.png", width = 1400, height = 1400)
-prots_and_vol
-dev.off()
-
-## injected sample and number of proteins
-# Calculations
-lm_model <- lm(count_prot ~ injection_volume, data = n_prots_total_int)
-r_squared <- summary(lm_model)$r.squared
-# Plot
-inj_and_vol <- ggplot(data = n_prots_total_int, mapping = aes(x = injection_volume, y = count_prot), label = sample_name)+
-  geom_point(size = 10, colour = "black")+
-  geom_smooth(method = "lm", formula = y ~ x)+
-  geom_text(x = 0.025, y = 600, label = paste0("Rsquared: ",as.character(round(r_squared, digits = 5))), color = "red", size= 8)+
-  theme_bw()+
-  geom_text_repel(nudge_y = 15,
-                  size = 6, mapping = aes(label = sample_name))+
-  ggtitle("Nº of proteins and Injected volume")+
-  xlab("Injected volume")+
-  ylab("Nº proteins")+
-  theme(legend.position= "none",
-        axis.text.x = element_text(angle = 0, vjust = 0.5, hjust = 1, size = 15, face = "bold"),
-        axis.text.y = element_text(size = 15, face = "bold"),
-        axis.title = element_text(size = 20),
-        title = element_text(size = 22),
-        legend.text = element_text(size = 14, face = "bold"))
-
-png(filename = "./plots/9_number_of_prots_and_injection.png", width = 1400, height = 1400)
-inj_and_vol
-dev.off()
+# sample_extra_info <- as.data.frame(readr::read_tsv("./raw_data/sample_extra_info.tsv",
+#                                                    locale = readr::locale(encoding = "latin1")))
+# sample_extra_info <- sample_extra_info[,c(2,3,4)]
+# colnames(sample_extra_info) <- c("sample_name","volume","injection_volume")
+# n_prots_total_int <- merge(n_prots_total_int, sample_extra_info, by = "sample_name")
+# # Calculations
+# lm_model <- lm(count_prot ~ volume, data = n_prots_total_int)
+# r_squared <- summary(lm_model)$r.squared
+# # Plots
+# prots_and_vol <- ggplot(data = n_prots_total_int, mapping = aes(x = volume, y = count_prot), label = sample_name)+
+#   geom_point(size = 10, colour = "black")+
+#   geom_smooth(method = "lm", formula = y ~ x)+
+#   geom_text(x = 100, y = 300, label = paste0("Rsquared: ",as.character(round(r_squared, digits = 5))), color = "red", size= 8)+
+#   theme_bw()+
+#   geom_text_repel(nudge_y = 10,
+#                   size = 6, mapping = aes(label = sample_name))+
+#   ggtitle("Nº of proteins and Initial sample volume")+
+#   xlab("Initial sample volume")+
+#   ylab("Nº proteins")+
+#   theme(legend.position= "none",
+#         axis.text.x = element_text(angle = 0, vjust = 0.5, hjust = 1, size = 15, face = "bold"),
+#         axis.text.y = element_text(size = 15, face = "bold"),
+#         axis.title = element_text(size = 20),
+#         title = element_text(size = 22),
+#         legend.text = element_text(size = 14, face = "bold"))
+# 
+# png(filename = "./plots/8_number_of_prots_and_volume.png", width = 1400, height = 1400)
+# prots_and_vol
+# dev.off()
+# 
+# ## injected sample and number of proteins
+# # Calculations
+# lm_model <- lm(count_prot ~ injection_volume, data = n_prots_total_int)
+# r_squared <- summary(lm_model)$r.squared
+# # Plot
+# inj_and_vol <- ggplot(data = n_prots_total_int, mapping = aes(x = injection_volume, y = count_prot), label = sample_name)+
+#   geom_point(size = 10, colour = "black")+
+#   geom_smooth(method = "lm", formula = y ~ x)+
+#   geom_text(x = 0.025, y = 600, label = paste0("Rsquared: ",as.character(round(r_squared, digits = 5))), color = "red", size= 8)+
+#   theme_bw()+
+#   geom_text_repel(nudge_y = 15,
+#                   size = 6, mapping = aes(label = sample_name))+
+#   ggtitle("Nº of proteins and Injected volume")+
+#   xlab("Injected volume")+
+#   ylab("Nº proteins")+
+#   theme(legend.position= "none",
+#         axis.text.x = element_text(angle = 0, vjust = 0.5, hjust = 1, size = 15, face = "bold"),
+#         axis.text.y = element_text(size = 15, face = "bold"),
+#         axis.title = element_text(size = 20),
+#         title = element_text(size = 22),
+#         legend.text = element_text(size = 14, face = "bold"))
+# 
+# png(filename = "./plots/9_number_of_prots_and_injection.png", width = 1400, height = 1400)
+# inj_and_vol
+# dev.off()
 
 ### Remove samples
-long_format <- remove_samp(dataset = long_format, samples = c(""))
+long_format <- remove_samp(dataset = long_format)
 dian_clean <- long_format
 
 ### Sample Deconvolution
-dian_clean <- sample_combination(dataset = dian_clean, technical_replicates = "sample_name", sample_names = "real_sample",
+## Preare the data for the sample deconvolution
+sample_deconv <- readr::read_tsv("./raw_data/meta_data_for_deconvolution.tsv")
+dian_clean <- merge(dian_clean, sample_deconv, by = "sample_name")
+## Do the deconvolution
+dian_clean <- sample_combination(dataset = dian_clean, 
+                                 technical_replicates = "sample_name", 
+                                 sample_names = "real_sample",
                                  expression_unit = "Protein.Group", 
-                                 intensity_to_combine = "intens", remove_reps = T,report_results = T)
-
+                                 intensity_to_combine = "intens", 
+                                 remove_reps = T,report_results = T)
+## Changing of colnames after the deconvolution
 colnames(dian_clean)[grep("real_sample", colnames(dian_clean))] <- "sample_name" 
 colnames(dian_clean)[grep("combined_intensity", colnames(dian_clean))] <- "intens"
 
 #### Impute missing values
-colnames(dian_clean)[3] <- "protein_group"
-dian_clean_imp <- tim(impute = "yes", dataset = dian_clean, NAs_prop = 0.1, intensity_to_impute = "intens")
+## meta_data for the imputation
+experimental_groups <- c("REC_CHO_09_11" = "CHO", 
+                         "REC_CHO_16_11" = "CHO",
+                         "REC_CHO_2_16_11" = "CHO", 
+                         "REC_UT_09_11" = "UT",
+                         "REC_UT_16_11" = "UT", 
+                         "REC_UT_2_16_11" = "UT")
+
+## do the imputation
+dian_clean_imp <- tim(impute = "yes", dataset = dian_clean, unit_to_impute = "Protein.Group",
+                      NAs_prop = 0.1, intensity_to_impute = "intens", 
+                      experimental_groups = experimental_groups,
+                      report_results = T)
+
 # Plot intensity boxplots after imputation
 intensity_boxplots_imputation <- ggplot(dian_clean_imp, mapping = aes(x = sample_name, y = imputed_intensity))+
   geom_boxplot(data = dian_clean_imp, mapping = aes(x = sample_name, y = imputed_intensity, fill = sample_name))+
@@ -494,33 +506,19 @@ dev.off()
 #### Plots for grouping
 ### PCA
 # matrix extraction
-expression_matrix <- reshape2::dcast(dian_clean_imp, protein_group ~ sample_name, value.var = "normalized_intensity")
+expression_matrix <- reshape2::dcast(dian_clean_imp, Protein.Group ~ sample_name, value.var = "normalized_intensity")
 rownames(expression_matrix) <- expression_matrix$protein_group 
 expression_matrix <- expression_matrix[,-1]
 # PCA calculation
 pca1 <- prcomp(t(expression_matrix), center = T, scale. = T)
 pca1x <- as.data.frame(pca1$x)
 pca1x <- pca1x[colnames(expression_matrix),]
-# meta for pca
-pca_meta <- as.data.frame(tibble(
-  sample_rep = rownames(pca1x)
-))
-# Add some extra data to plot different colours etc.
-pca_meta$sample <- pca_meta$sample_rep
-for (i in 1:length(pca_meta$sample)){
-  pca_meta$sample[i] <- unlist(strsplit(pca_meta$sample_rep[i], "_")[[1]])[1]
-}
-pca_meta <- pca_meta %>%
-  mutate(batch = ifelse((str_detect(pattern = "post", string = sample_rep)) | 
-                          (str_detect(pattern = "bC", string = sample_rep)),"batch_2","batch_1"))
-
-rownames(pca_meta) <- pca_meta$sample_rep
-# data frame to plot
-pca1xx <- merge(pca1x, pca_meta, by = "row.names")
+pca1xx <- pca1x
+pca1xx$sample_name <- rownames(pca1xx)
 
 # Plot
 pca_plot <- ggplot(pca1xx, 
-                   aes(x = PC1, y = PC2, label = sample_rep))+
+                   aes(x = PC1, y = PC2, label = sample_name))+
   geom_point(size = 4, color = "black")+
   guides(color = guide_legend(title = "Sample"))+
   geom_text_repel(nudge_y = 0.01,
@@ -528,35 +526,45 @@ pca_plot <- ggplot(pca1xx,
   xlab(paste("PC1(", round(100*(pca1$sdev[1]^2/sum(pca1$sdev^2)), 2), "%)", sep = "")) +
   ylab(paste("PC2(", round(100*(pca1$sdev[2]^2/sum(pca1$sdev^2)), 2), "%)", sep = "")) +
   ggtitle(("Principal Component Analysis (PCA)"))
-####  geom_polygon(aes(group = sample, fill = sample), alpha = 0.2, show.legend = FALSE) 
 #### ADD THE SAME AS THE ELOI GARI !
 
 png(filename = "./plots/12_first_PCA.png", width = 1000, height = 1000)
 pca_plot
 dev.off()
 
-### Shilouette for number of clusters
-number_of_clusts <- factoextra::fviz_nbclust(x = t(expression_matrix), kmeans, method = "silhouette", k.max = 17)
+#### Remove batch effect
+### Check the ordering of the batches
+columns_checker(dataset = dian_clean_imp, 
+                unit_of_analysis = "Protein.Group", intensity = "normalized_intensity", 
+                tmt = F)
 
-png(filename = "./plots/13_number_of_clusters.png", width = 1000, height = 1000)
-number_of_clusts
-dev.off()
+### Remove the batch effect
+dian_clean_imp_unbatch <- remove_batch(dataset = dian_clean_imp,
+                                       use_combat = T,
+                                       remove = "yes", 
+                                       intensity = "normalized_intensity", unit_of_work = "Protein.Group", 
+                                       tmt = F, where_is_the_batch1 = c("batch1","batch2",
+                                                                        "batch2","batch2",
+                                                                        "batch1","batch2"))
 
-### Kmeans
-kmeans_results <- kmeans(x = t(expression_matrix), 2, nstart = 25)
-clusters <- as.data.frame(tibble::tibble(
-  sample = names(kmeans_results$cluster),
-  group = paste0("group_",kmeans_results$cluster)
-))
 
-### PCA with clusters
-pca1xx <- pca1xx %>% 
-  mutate(Group = clusters$group[match(sample_rep, clusters$sample)])
+## Extract the expression_matrix
+expression_matrix2 <- reshape2::dcast(dian_clean_imp_unbatch, Protein.Group ~ sample_name, value.var = "unbatched_intensity")
+rownames(expression_matrix2) <- expression_matrix2$Protein.Group 
+expression_matrix2 <- expression_matrix2[,-1]
+
+# PCA calculation
+pca1 <- prcomp(t(expression_matrix2), center = T, scale. = T)
+pca1x <- as.data.frame(pca1$x)
+pca1x <- pca1x[colnames(expression_matrix2),]
+pca1xx <- pca1x
+pca1xx$sample_name <- rownames(pca1xx)
 
 # Plot
 pca_plot <- ggplot(pca1xx, 
-                   aes(x = PC1, y = PC2, label = sample_rep))+
-  geom_point(size = 4, aes(color = Group))+
+                   aes(x = PC1, y = PC2, label = sample_name))+
+  # geom_point(size = 4, aes(color = Group))+
+  geom_point(size = 4, color = "black")+
   guides(color = guide_legend(title = "Sample"))+
   geom_text_repel(nudge_y = 0.01,
                   size = 4)+
@@ -570,17 +578,17 @@ dev.off()
 
 ### UMAP with clusters
 # UMAP calculation
-umap_res <- umap::umap(t(expression_matrix), n_neighbors = 9, n_components = 2, metric = "euclidean")
+umap_res <- umap::umap(t(expression_matrix2), n_neighbors = 2, n_components = 2, metric = "euclidean")
 # UMAP data transformations
-umap_df <- umap_res$layout
+umap_df <- as.data.frame(umap_res$layout)
 colnames(umap_df) <- c("UMAP1", "UMAP2")
-umap_df <- merge(umap_df, clusters, by.x = "row.names", by.y = "sample")
-colnames(umap_df)[1] <- "sample"
-colnames(umap_df)[4] <- "Group"
+umap_df$sample_name <- rownames(umap_df)
+
 # Plot
 umap_plot <- ggplot(umap_df, 
-                    aes(x = UMAP1, y = UMAP2, label = sample))+
-  geom_point(size = 4, aes(color = Group))+
+                    aes(x = UMAP1, y = UMAP2, label = sample_name))+
+  # geom_point(size = 4, aes(color = Group))+
+  geom_point(size = 4, color = "black")+
   guides(color = guide_legend(title = "Sample"))+
   geom_text_repel(nudge_y = 0.01,
                   size = 4)+
@@ -594,17 +602,12 @@ dev.off()
 #### Extract data
 ## Annotation
 annotation <- dian_clean
-colnames(annotation)[2] <- "Accession"
-colnames(annotation)[3] <- "Protein Group"
 annotation <- annotation %>% 
-  subset(select = c(`Protein Group`, Accession, Gene.names, `Protein Description`, `Protein Name`)) %>% 
+  subset(select = c(Protein.Group, Accession, Accession_1, Gene.names, Gene.names_1,`Protein Description`, `Protein Name`)) %>% 
   distinct()
 readr::write_tsv("./results/annotation.tsv", x = annotation)
 
-## Ungrouped meta_data
-readr::write_tsv("./results/meta_data_unclustered.tsv", x = meta_data)
-
 ## expression_matrix (protein_list)
-expression_matrix <- reshape2::dcast(dian_clean_imp, `Protein Group` ~ sample_name, value.var="normalized_intensity" )
-expression_matrix_def <- merge(annotation, expression_matrix, by.x = "Accession", by.y = "Protein Group")
+expression_matrix_def <- reshape2::dcast(dian_clean_imp_unbatch, Protein.Group ~ sample_name, value.var="unbatched_intensity" )
+expression_matrix_def <- merge(annotation, expression_matrix_def, by = "Protein.Group")
 readr::write_tsv("./results/expression_matrix_def.tsv", x = expression_matrix_def)
