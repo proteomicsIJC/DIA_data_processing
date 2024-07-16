@@ -21,6 +21,7 @@ library(reshape2)
 library(openxlsx)
 library(ggrepel)
 library(readr) 
+library(sva)
 
 ### Directory preparation
 # Check if folders exist, if NO create them
@@ -125,6 +126,8 @@ dian_clean <- remove_contaminants(dataset = dian_data, contaminants = "./raw_dat
 
 ## transform to log2
 dian_clean <- log2_to_pattern_label_free(dataset = dian_clean, patterns = sample_names)
+openxlsx::write.xlsx("./results/protein_list.xlsx", x = dian_clean)
+
 # this has become quite useful when then calculating the completeness of the data
 to_completeness <- nrow(dian_clean)
 
@@ -452,7 +455,7 @@ experimental_groups <- c("REC_CHO_09_11" = "CHO",
 
 ## do the imputation
 dian_clean_imp <- tim(impute = "yes", dataset = dian_clean, unit_to_impute = "Protein.Group",
-                      NAs_prop = 0.1, intensity_to_impute = "intens", 
+                      NAs_prop = 0.3, intensity_to_impute = "intens", 
                       experimental_groups = experimental_groups,
                       report_results = T)
 
