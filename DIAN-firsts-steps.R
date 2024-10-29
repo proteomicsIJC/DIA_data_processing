@@ -54,7 +54,16 @@ colnames(raw_data)[5] <- "Protein.Description"
 
 ### Peptide information
 peptide_info <- readr::read_tsv("./raw_data/report.pr_matrix.tsv")
+hela_peptides1 <- readr::read_tsv("./raw_data/Hela_raw_files/report.pr_matrix_1.tsv")
+colnames(hela_peptides1)[ncol(hela_peptides1)] <- "intens"
+hela_peptides1$sample_name <- "Hela_1"
+hela_peptides2 <- readr::read_tsv("./raw_data/Hela_raw_files/report.pr_matrix_2.tsv")
+colnames(hela_peptides2)[ncol(hela_peptides2)] <- "intens"
+hela_peptides2$sample_name <- "Hela_2"
 
+hela_peptides <- rbind(hela_peptides1, hela_peptides2)
+remove(hela_peptides1);remove(hela_peptides2) 
+  
 ### MetaData
 meta_data <- as.data.frame(readr::read_tsv("./raw_data/meta_data.tsv", locale = readr::locale(encoding = "latin1")))
 # save the sample_names
@@ -109,6 +118,8 @@ openxlsx::write.xlsx(dian_data, "./results/Raw_data.xlsx")
 #### Peptide based analysis
 peptide_info <- peptide_info %>% 
   filter(!duplicated(Stripped.Sequence))
+hela_peptides <- hela_peptides %>% 
+  filter(!duplicated(Stripped.Sequence)) 
 
 peptide_info_long <- peptide_info %>% 
   pivot_longer(cols = all_of(sample_names),
@@ -117,6 +128,14 @@ peptide_info_long <- peptide_info %>%
   subset(select = c(Stripped.Sequence,sample_name, intens)) %>% 
   filter(!is.na(intens)) %>% 
   subset(select = -c(intens))
+peptide_info_long$type_of_sample <- "sample"
+
+hela_peptides_long <- hela_peptides %>% 
+  subset(select = c(Stripped.Sequence,sample_name, intens)) %>% 
+  filter(!is.na(intens)) %>% 
+  subset(select = -c(intens))
+hela_peptides_long$type_of_sample <- "Hela"
+peptide_info_long <- rbind(peptide_info_long, hela_peptides_long)
 
 ## Missed cleavages
 cleavage_report <- tibble::tibble(
@@ -185,27 +204,29 @@ missed_cleavages
 dev.off()
 
 ## Hydrophobicity
+# unique_peptides <- unique(peptide_info_long$Stripped.Sequence)
 hydrophobicity_report <- tibble::tibble(
   # The peptides
-  peptide = unique_peptides,
-  hydrophobicity = sapply(X = unique_peptides, 
+  peptide = peptide_info_long$Stripped.Sequence,
+  sample_name = peptide_info_long$sample_name,
+  type_of_sample = peptide_info_long$type_of_sample,
+  hydrophobicity = sapply(X = peptide_info_long$Stripped.Sequence, 
                           FUN = function(x){Peptides::hydrophobicity(seq = x, scale = "KyteDoolittle")})
 )
-  
-hydro_hgram <- ggplot(data = hydrophobicity_report, aes(x = hydrophobicity)) +
-  stat_density(aes(y=after_stat(density)), 
-               color="#BCBD22", linewidth = 2, geom="line")+
+
+hydro_hgram <- ggplot(data = hydrophobicity_report , aes(x = hydrophobicity)) +
+  # geom_density(mapping = aes(color = type_of_sample), linewidth = 2)+
+  geom_density(mapping = aes(color = sample_name), linewidth = 2)+
   theme_bw()+
   ggtitle(label = "Hydrophobicity, KyteDoolittle scale") +
   xlab("Hydrophobicity")+
   ylab("Density")+
-  theme(legend.position= "none",
+  theme(legend.position= "right",
         axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1, size = 15, face = "bold"),
         axis.text.y = element_text(size = 15, face = "bold"),
         axis.title = element_text(size = 20),
         title = element_text(size = 22),
         legend.text = element_text(size = 14, face = "bold"))
-
 
 png(filename = "./plots/0_hydrophobicity.png", width = 1000, height = 1000)
 hydro_hgram
@@ -621,28 +642,32 @@ png(filename = "./plots/12_first_PCA_same_names_as_first.png", width = 900, heig
 pca_plot
 dev.off()
 
+
 ### UMAP with clusters
 # UMAP calculation
-# umap_res <- umap::umap(t(expression_matrix2), n_neighbors = 2, n_components = 2, metric = "euclidean")
+umap_res <- umap::umap(t(expression_matrix), n_neighbors = 2, n_components = 2, metric = "euclidean")
 # # UMAP data transformations
-# umap_df <- as.data.frame(umap_res$layout)
-# colnames(umap_df) <- c("UMAP1", "UMAP2")
-# umap_df$sample_name <- rownames(umap_df)
-# 
-# # Plot
-# umap_plot <- ggplot(umap_df, 
-#                     aes(x = UMAP1, y = UMAP2, label = sample_name))+
-#   # geom_point(size = 4, aes(color = Group))+
-#   geom_point(size = 4, color = "black")+
-#   guides(color = guide_legend(title = "Sample"))+
-#   geom_text_repel(nudge_y = 0.01,
-#                   size = 4)+
-#   xlab("UMAP1") +
-#   ylab("UMAP2") +
-#   ggtitle(("UMAP"))
-# png(filename = "./plots/14_umap_plot.png", width = 1000, height = 1000)
-# umap_plot
-# dev.off()
+umap_df <- as.data.frame(umap_res$layout)
+colnames(umap_df) <- c("UMAP1", "UMAP2")
+umap_df$sample_name <- rownames(umap_df)
+umap_df <- merge(umap_df, meta_data, by = "sample_name")
+
+# Plot
+umap_plot <- ggplot(umap_df,
+                    aes(x = UMAP1, y = UMAP2, label = sample_name))+
+  geom_point(size = 4, mapping = aes(color = cell_line))+
+  scale_color_manual(values = c("CAV" = "yellow",
+                                "A45" = "pink"))+
+  guides(color = guide_legend(title = "Sample"))+
+  geom_text_repel(nudge_y = 0.01,
+                  size = 4)+
+  xlab("UMAP1") +
+  ylab("UMAP2") +
+  ggtitle(("UMAP"))
+
+png(filename = "./plots/14_umap_plot.png", width = 1000, height = 1000)
+umap_plot
+dev.off()
 
 #### Extract data
 dcast_formula <- as.formula("Protein.Group + Accession + Accession_1 + Gene.names + Gene.names_1 + Protein.Description + Protein.Name ~ sample_name")
