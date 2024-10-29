@@ -57,6 +57,8 @@ peptide_info <- readr::read_tsv("./raw_data/report.pr_matrix.tsv")
 
 ### MetaData
 meta_data <- as.data.frame(readr::read_tsv("./raw_data/meta_data.tsv", locale = readr::locale(encoding = "latin1")))
+# save the sample_names
+sample_names <- meta_data$sample_name
 
 ### Contaminants
 cont <- readLines("./raw_data/contaminants.fasta")
@@ -71,6 +73,15 @@ colnames(raw_data) <- sapply(X = colnames(raw_data),
                                  x
                                }
                                })
+
+colnames(peptide_info) <- sapply(X = colnames(peptide_info), 
+                             FUN = function(x) {
+                               if (x %in% meta_data$file_name){
+                                 meta_data$sample_name[match(x, meta_data$file_name)]}
+                               else {
+                                 x
+                               }
+                             })
 
 ### Annotation completion with Uniprot.ws
 ## Accession_1 and Gene.names.1 generation
@@ -95,28 +106,38 @@ dian_data <- raw_data
 
 openxlsx::write.xlsx(dian_data, "./results/Raw_data.xlsx")
 
-
-
 #### Peptide based analysis
+peptide_info <- peptide_info %>% 
+  filter(!duplicated(Stripped.Sequence))
+
+peptide_info_long <- peptide_info %>% 
+  pivot_longer(cols = all_of(sample_names),
+               names_to = "sample_name",
+               values_to = "intens") %>% 
+  subset(select = c(Stripped.Sequence,sample_name, intens)) %>% 
+  filter(!is.na(intens)) %>% 
+  subset(select = -c(intens))
+
 ## Missed cleavages
-unique_peptides <- unique(peptide_info$Stripped.Sequence)
 cleavage_report <- tibble::tibble(
   # The peptides
-  peptide = unique_peptides,
+  peptide = peptide_info_long$Stripped.Sequence,
+  # The samples
+  sample_name = peptide_info_long$sample_name,
   
   # Count Ks and Rs
-  k_or_r = sapply(X = unique_peptides, FUN = function(x) {
+  k_or_r = sapply(X = peptide_info_long$Stripped.Sequence, FUN = function(x) {
     length(grep(x = unlist(strsplit(x, split = ""),use.names = F), pattern = "K|R"))  
   }),
   
   # Count Ks and Rs that happen at the end
-  final_k_or_r = sapply(X = unique_peptides, FUN = function(x) {
+  final_k_or_r = sapply(X = peptide_info_long$Stripped.Sequence, FUN = function(x) {
     final_letter <- unlist(strsplit(x, split = ""), use.names = F)
     final_letter <- final_letter[length(final_letter)]
     length(grep(x = final_letter, pattern = "K|R"))
   }),
   # Count KPs and RPs
-  kp_or_rp = sapply(X = unique_peptides, FUN = function(x) {
+  kp_or_rp = sapply(X = peptide_info_long$Stripped.Sequence, FUN = function(x) {
     stringr::str_count(string = x, pattern = "RP|KP")
   })
 )
@@ -125,29 +146,29 @@ cleavage_report <- cleavage_report %>%
   mutate(missed_cleavages = k_or_r - final_k_or_r - kp_or_rp)
 
 cleavage_report_per <- cleavage_report %>% 
-  subset(select = c(missed_cleavages)) %>% 
-  mutate(missed_cleavages_per = as.character(missed_cleavages)) %>% 
-  group_by(missed_cleavages_per) %>% 
-  mutate(n_of_cleavages = n()) %>% 
-  ungroup() %>%
-  mutate(per_of_cleavages = n_of_cleavages/length(unique_peptides)*100) %>% 
-  subset(select = c(missed_cleavages,per_of_cleavages)) %>% 
-  mutate(missed_cleavages = as.character(missed_cleavages))
-cleavage_report_per <- cleavage_report_per %>% 
-  distinct()
+  mutate(missed_cleavages = as.character(missed_cleavages)) %>% 
+  group_by(sample_name) %>% 
+  mutate(number_of_peptides = n()) %>% 
+  ungroup() %>% 
+  group_by(sample_name, missed_cleavages) %>% 
+  mutate(number_of_cleavages = n()) %>% 
+  ungroup() %>% 
+  subset(select = c(sample_name,missed_cleavages,number_of_peptides,number_of_cleavages)) %>% 
+  distinct() %>% 
+  mutate(cleavage_per = number_of_cleavages/number_of_peptides*100)
 
 # Plot
-missed_cleavages <- ggplot(data = cleavage_report_per, mapping = aes(x = missed_cleavages, y = per_of_cleavages))+
+missed_cleavages <- ggplot(data = cleavage_report_per, mapping = aes(x = missed_cleavages, y = cleavage_per))+
   geom_bar(stat = "identity", mapping = aes(fill = missed_cleavages)) +
   scale_fill_manual(values = c("0" = "skyblue",
                                "1" = "orange",
                                "2" = "red",
                                "3" = "black"))+
   geom_text(data = cleavage_report_per,
-            aes(y = per_of_cleavages + 5, x = missed_cleavages, 
-                label = paste0(round(x = per_of_cleavages, digits = 2), "%")), size = 8)+
+            mapping = aes(y = cleavage_per + 5, x = missed_cleavages, 
+                label = paste0(round(x = cleavage_per, digits = 2), "%")), size = 8)+
   theme_bw()+
-  ggtitle("NAs density per protein groups")+
+  ggtitle("Missed cleavages per sample")+
   xlab("# Missed cleavages")+
   ylab("Peptide %")+
   theme(legend.position= "none",
@@ -155,7 +176,9 @@ missed_cleavages <- ggplot(data = cleavage_report_per, mapping = aes(x = missed_
         axis.text.y = element_text(size = 15, face = "bold"),
         axis.title = element_text(size = 20),
         title = element_text(size = 22),
-        legend.text = element_text(size = 14, face = "bold"))
+        legend.text = element_text(size = 14, face = "bold")) +
+  facet_wrap(~sample_name)
+
 
 png(filename = "./plots/0_missed_cleavages.png", width = 1400, height = 1400)
 missed_cleavages
@@ -189,8 +212,6 @@ hydro_hgram
 dev.off()
 
 #### Firsts transformations for the data manipulation
-# save the sample_names
-sample_names <- meta_data$sample_name
 ## Transform 0s to NAs
 dian_data <- zero_to_NA_label_free(dataset = dian_data, patterns = sample_names)
 
