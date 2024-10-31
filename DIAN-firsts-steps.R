@@ -52,18 +52,6 @@ colnames(raw_data)[3] <- "Protein.Name"
 colnames(raw_data)[4] <- "Gene.names"
 colnames(raw_data)[5] <- "Protein.Description"
 
-### Peptide information
-peptide_info <- readr::read_tsv("./raw_data/report.pr_matrix.tsv")
-hela_peptides1 <- readr::read_tsv("./raw_data/Hela_raw_files/report.pr_matrix_1.tsv")
-colnames(hela_peptides1)[ncol(hela_peptides1)] <- "intens"
-hela_peptides1$sample_name <- "Hela_1"
-hela_peptides2 <- readr::read_tsv("./raw_data/Hela_raw_files/report.pr_matrix_2.tsv")
-colnames(hela_peptides2)[ncol(hela_peptides2)] <- "intens"
-hela_peptides2$sample_name <- "Hela_2"
-
-hela_peptides <- rbind(hela_peptides1, hela_peptides2)
-remove(hela_peptides1);remove(hela_peptides2) 
-  
 ### MetaData
 meta_data <- as.data.frame(readr::read_tsv("./raw_data/meta_data.tsv", locale = readr::locale(encoding = "latin1")))
 # save the sample_names
@@ -82,15 +70,6 @@ colnames(raw_data) <- sapply(X = colnames(raw_data),
                                  x
                                }
                                })
-
-colnames(peptide_info) <- sapply(X = colnames(peptide_info), 
-                             FUN = function(x) {
-                               if (x %in% meta_data$file_name){
-                                 meta_data$sample_name[match(x, meta_data$file_name)]}
-                               else {
-                                 x
-                               }
-                             })
 
 ### Annotation completion with Uniprot.ws
 ## Accession_1 and Gene.names.1 generation
@@ -114,123 +93,6 @@ raw_data <- as.data.frame(raw_data)
 dian_data <- raw_data
 
 openxlsx::write.xlsx(dian_data, "./results/Raw_data.xlsx")
-
-#### Peptide based analysis
-peptide_info <- peptide_info %>% 
-  filter(!duplicated(Stripped.Sequence))
-hela_peptides <- hela_peptides %>% 
-  filter(!duplicated(Stripped.Sequence)) 
-
-peptide_info_long <- peptide_info %>% 
-  pivot_longer(cols = all_of(sample_names),
-               names_to = "sample_name",
-               values_to = "intens") %>% 
-  subset(select = c(Stripped.Sequence,sample_name, intens)) %>% 
-  filter(!is.na(intens)) %>% 
-  subset(select = -c(intens))
-peptide_info_long$type_of_sample <- "sample"
-
-hela_peptides_long <- hela_peptides %>% 
-  subset(select = c(Stripped.Sequence,sample_name, intens)) %>% 
-  filter(!is.na(intens)) %>% 
-  subset(select = -c(intens))
-hela_peptides_long$type_of_sample <- "Hela"
-peptide_info_long <- rbind(peptide_info_long, hela_peptides_long)
-
-## Missed cleavages
-cleavage_report <- tibble::tibble(
-  # The peptides
-  peptide = peptide_info_long$Stripped.Sequence,
-  # The samples
-  sample_name = peptide_info_long$sample_name,
-  
-  # Count Ks and Rs
-  k_or_r = sapply(X = peptide_info_long$Stripped.Sequence, FUN = function(x) {
-    length(grep(x = unlist(strsplit(x, split = ""),use.names = F), pattern = "K|R"))  
-  }),
-  
-  # Count Ks and Rs that happen at the end
-  final_k_or_r = sapply(X = peptide_info_long$Stripped.Sequence, FUN = function(x) {
-    final_letter <- unlist(strsplit(x, split = ""), use.names = F)
-    final_letter <- final_letter[length(final_letter)]
-    length(grep(x = final_letter, pattern = "K|R"))
-  }),
-  # Count KPs and RPs
-  kp_or_rp = sapply(X = peptide_info_long$Stripped.Sequence, FUN = function(x) {
-    stringr::str_count(string = x, pattern = "RP|KP")
-  })
-)
-
-cleavage_report <- cleavage_report %>% 
-  mutate(missed_cleavages = k_or_r - final_k_or_r - kp_or_rp)
-
-cleavage_report_per <- cleavage_report %>% 
-  mutate(missed_cleavages = as.character(missed_cleavages)) %>% 
-  group_by(sample_name) %>% 
-  mutate(number_of_peptides = n()) %>% 
-  ungroup() %>% 
-  group_by(sample_name, missed_cleavages) %>% 
-  mutate(number_of_cleavages = n()) %>% 
-  ungroup() %>% 
-  subset(select = c(sample_name,missed_cleavages,number_of_peptides,number_of_cleavages)) %>% 
-  distinct() %>% 
-  mutate(cleavage_per = number_of_cleavages/number_of_peptides*100)
-
-# Plot
-missed_cleavages <- ggplot(data = cleavage_report_per, mapping = aes(x = missed_cleavages, y = cleavage_per))+
-  geom_bar(stat = "identity", mapping = aes(fill = missed_cleavages)) +
-  scale_fill_manual(values = c("0" = "skyblue",
-                               "1" = "orange",
-                               "2" = "red",
-                               "3" = "black"))+
-  geom_text(data = cleavage_report_per,
-            mapping = aes(y = cleavage_per + 5, x = missed_cleavages, 
-                label = paste0(round(x = cleavage_per, digits = 2), "%")), size = 8)+
-  theme_bw()+
-  ggtitle("Missed cleavages per sample")+
-  xlab("# Missed cleavages")+
-  ylab("Peptide %")+
-  theme(legend.position= "none",
-        axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1, size = 15, face = "bold"),
-        axis.text.y = element_text(size = 15, face = "bold"),
-        axis.title = element_text(size = 20),
-        title = element_text(size = 22),
-        legend.text = element_text(size = 14, face = "bold")) +
-  facet_wrap(~sample_name)
-
-
-png(filename = "./plots/0_missed_cleavages.png", width = 1400, height = 1400)
-missed_cleavages
-dev.off()
-
-## Hydrophobicity
-# unique_peptides <- unique(peptide_info_long$Stripped.Sequence)
-hydrophobicity_report <- tibble::tibble(
-  # The peptides
-  peptide = peptide_info_long$Stripped.Sequence,
-  sample_name = peptide_info_long$sample_name,
-  type_of_sample = peptide_info_long$type_of_sample,
-  hydrophobicity = sapply(X = peptide_info_long$Stripped.Sequence, 
-                          FUN = function(x){Peptides::hydrophobicity(seq = x, scale = "KyteDoolittle")})
-)
-
-hydro_hgram <- ggplot(data = hydrophobicity_report , aes(x = hydrophobicity)) +
-  # geom_density(mapping = aes(color = type_of_sample), linewidth = 2)+
-  geom_density(mapping = aes(color = sample_name), linewidth = 2)+
-  theme_bw()+
-  ggtitle(label = "Hydrophobicity, KyteDoolittle scale") +
-  xlab("Hydrophobicity")+
-  ylab("Density")+
-  theme(legend.position= "right",
-        axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1, size = 15, face = "bold"),
-        axis.text.y = element_text(size = 15, face = "bold"),
-        axis.title = element_text(size = 20),
-        title = element_text(size = 22),
-        legend.text = element_text(size = 14, face = "bold"))
-
-png(filename = "./plots/0_hydrophobicity.png", width = 1000, height = 1000)
-hydro_hgram
-dev.off()
 
 #### Firsts transformations for the data manipulation
 ## Transform 0s to NAs
