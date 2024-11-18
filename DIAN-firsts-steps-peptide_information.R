@@ -46,16 +46,38 @@ source("./functions/sample_combination.R")
 #### Data importation
 ### Peptide information
 peptide_info <- readr::read_tsv("./raw_data/report.pr_matrix.tsv")
+
+### Hela information
 hela_peptides1 <- readr::read_tsv("./raw_data/Hela_raw_files/report.pr_matrix_1.tsv")
 colnames(hela_peptides1)[ncol(hela_peptides1)] <- "intens"
 hela_peptides1$sample_name <- "Hela_1"
+
 hela_peptides2 <- readr::read_tsv("./raw_data/Hela_raw_files/report.pr_matrix_2.tsv")
 colnames(hela_peptides2)[ncol(hela_peptides2)] <- "intens"
 hela_peptides2$sample_name <- "Hela_2"
 
-hela_peptides <- rbind(hela_peptides1, hela_peptides2)
+hela_peptides3 <- readr::read_tsv("./raw_data/Hela_raw_files/report.pr_matrix_3_1.tsv")
+colnames(hela_peptides3)[ncol(hela_peptides3)] <- "intens"
+hela_peptides3$sample_name <- "Hela_3"
+
+hela_peptides4 <- readr::read_tsv("./raw_data/Hela_raw_files/report.pr_matrix_3_2.tsv")
+colnames(hela_peptides4)[ncol(hela_peptides4)] <- "intens"
+hela_peptides4$sample_name <- "Hela_4"
+
+hela_peptides5 <- readr::read_tsv("./raw_data/Hela_raw_files/report.pr_matrix_3_3.tsv")
+colnames(hela_peptides5)[ncol(hela_peptides5)] <- "intens"
+hela_peptides5$sample_name <- "Hela_5"
+
+hela_peptides6 <- readr::read_tsv("./raw_data/Hela_raw_files/report.pr_matrix_3_4.tsv")
+colnames(hela_peptides6)[ncol(hela_peptides6)] <- "intens"
+hela_peptides6$sample_name <- "Hela_6"
+
+
+hela_peptides <- rbind(hela_peptides1, hela_peptides2, hela_peptides3, hela_peptides4, hela_peptides5, hela_peptides6)
 remove(hela_peptides1);remove(hela_peptides2) 
-  
+remove(hela_peptides3);remove(hela_peptides4) 
+remove(hela_peptides5);remove(hela_peptides6)
+
 ### MetaData
 meta_data <- as.data.frame(readr::read_tsv("./raw_data/meta_data.tsv", locale = readr::locale(encoding = "latin1")))
 # save the sample_names
@@ -143,16 +165,23 @@ cleavage_report_per$sample_type <- sapply(X = cleavage_report_per$sample_name,
 
 # Plot
 missed_cleavages <- ggplot(data = cleavage_report_per)+
-  geom_bar(stat = "identity", aes(x = missed_cleavages, y = cleavage_per, fill = missed_cleavages)) +
+  # geom_bar(stat = "identity", aes(x = missed_cleavages, y = cleavage_per, fill = missed_cleavages)) + # in case we want the non-stacked model again
+  geom_bar(stat = "identity", aes(x = sample_name, y = cleavage_per, 
+                                  fill = factor(missed_cleavages, levels = c("3","2","1","0")))) +
   coord_cartesian(clip = "off", ylim = c(0,100)) +
   scale_fill_manual(values = c("0" = "skyblue", "1" = "orange", "2" = "red", "3" = "black")) +
-  geom_text(data = cleavage_report_per,
-            aes(y = cleavage_per + 5, x = missed_cleavages,
-                label = paste0(round(x = cleavage_per, digits = 2), "%")),
+  # geom_text(data = cleavage_report_per,
+  #           aes(y = cleavage_per + 5, x = missed_cleavages,
+  #               label = paste0(round(x = cleavage_per, digits = 1), "%")), # in case we want the non-stacked model again
+  #           size = 6) +
+  geom_text_repel(data = cleavage_report_per,
+            aes(y = 100 - cleavage_per/2, 
+                x = 1.75,
+                label = paste0(round(x = cleavage_per, digits = 1), "%")),
             size = 6) +
   ggnewscale::new_scale_fill() +
   geom_rect(data = cleavage_report_per,
-            aes(xmin = -Inf, xmax = Inf, ymin = 105, ymax = 114, fill = sample_type), 
+            aes(xmin = -Inf, xmax = Inf, ymin = 105, ymax = 110, fill = sample_type), 
             alpha = 0.2) +
   scale_fill_manual(values = c("Hela" = "skyblue", "Sample" = "black")) +
   theme_bw() +
