@@ -176,22 +176,22 @@ missed_cleavages <- ggplot(data = cleavage_report_per)+
   #           size = 6) +
   geom_text_repel(data = cleavage_report_per,
             aes(y = 100 - cleavage_per/2, 
-                x = 1.75,
+                x = sample_name,
                 label = paste0(round(x = cleavage_per, digits = 1), "%")),
             size = 6) +
   ggnewscale::new_scale_fill() +
-  geom_rect(data = cleavage_report_per,
-            aes(xmin = -Inf, xmax = Inf, ymin = 105, ymax = 110, fill = sample_type), 
-            alpha = 0.2) +
-  scale_fill_manual(values = c("Hela" = "skyblue", "Sample" = "black")) +
+  # geom_rect(data = cleavage_report_per,
+  #           aes(xmin = -Inf, xmax = Inf, ymin = 105, ymax = 110, fill = sample_type), 
+  #           alpha = 0.2) +
+  # scale_fill_manual(values = c("Hela" = "skyblue", "Sample" = "black")) +
   theme_bw() +
   ggtitle("Missed cleavages per sample") +
   xlab("# Missed cleavages") +
   ylab("Peptide %") +
-  facet_wrap(~factor(sample_name, levels = c(
-    c(sort(unique(cleavage_report$sample_name)[-grep(pattern = "Hela_", x = unique(cleavage_report$sample_name))])),
-    c(sort(unique(cleavage_report$sample_name)[grep(pattern = "Hela_", x = unique(cleavage_report$sample_name))])))), 
-    scales = "free") +
+  # facet_wrap(~factor(sample_name, levels = c(
+  #   c(sort(unique(cleavage_report$sample_name)[-grep(pattern = "Hela_", x = unique(cleavage_report$sample_name))]))   # in case we want the non-stacked model again
+  #   c(sort(unique(cleavage_report$sample_name)[grep(pattern = "Hela_", x = unique(cleavage_report$sample_name))])))),  
+  #   scales = "free") +
   theme(legend.position = "none",
         axis.text.x = element_text(angle = 0, size = 15, face = "bold"),
         axis.text.y = element_text(size = 15, face = "bold"),
